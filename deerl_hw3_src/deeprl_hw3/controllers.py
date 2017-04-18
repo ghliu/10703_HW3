@@ -6,7 +6,6 @@ import scipy #.linalg.solve_continuous_are as func
 
 from ipdb import set_trace as debug
 
-
 def prRed(prt): print("\033[91m {}\033[00m" .format(prt))
 def prGreen(prt): print("\033[92m {}\033[00m" .format(prt))
 def prYellow(prt): print("\033[93m {}\033[00m" .format(prt))
@@ -156,8 +155,8 @@ def calc_lqr_input(env, sim_env, debug_flag=False):
       The command to execute at this point.
     """
 
+    # prepare whatever need later
     global u
-
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
     x = env.state.copy()
@@ -165,32 +164,35 @@ def calc_lqr_input(env, sim_env, debug_flag=False):
     goal_dq = env.goal_dq.copy()
     Q = env.Q.copy()
     R = env.R.copy()
-    # delta = 1e-4
-    # dt = 1e-4
 
     if u is None:
       u = np.zeros(action_dim)
 
+    # calcuate A and B matrix
     A = approximate_A(sim_env, x.copy(), u.copy())
-    # if debug_flag : prGreen(A)
+    if debug_flag : prGreen('A={}'.format(A))
     assert(A.shape == (state_dim, state_dim))
 
     B = approximate_B(sim_env, x.copy(), u.copy())
-    # if debug_flag : prYellow(B)
+    if debug_flag : prYellow('B={}'.format(B))
     assert(B.shape == (state_dim, action_dim))
 
-    # 
-    X = scipy.linalg.solve_continuous_are(A, B, Q, R)
+    # solve CARE, return zero if raise error
+    try:
+      X = scipy.linalg.solve_continuous_are(A, B, Q, R)
+    except:
+      return np.zeros(action_dim)
+    
+    # calculate K gain
     K = np.dot(np.linalg.pinv(R), np.dot(B.T, X))
+    if debug_flag : prRed('K={}'.format(K))
 
-    if debug_flag : prRed(K)
-
-    # debug()
-    # J = env.get_jacobian()
+    # calcuate action
     x_target = x[:2]-goal_q
     u = np.hstack((x_target, x[2:]))
     u = -np.dot(K, u)
-
+    u = np.clip(u, 
+      env.action_space.low, env.action_space.high)
     if debug_flag : prGreen((x[:2], goal_q))
 
     return u
