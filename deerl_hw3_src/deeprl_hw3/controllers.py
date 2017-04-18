@@ -122,7 +122,7 @@ def approximate_B(env, x, u, delta=1e-5, dt=1e-5):
     us_inc = np.tile(u,(action_dim,1)) + delta * np.eye(action_dim)
     us_dec = np.tile(u,(action_dim,1)) - delta * np.eye(action_dim)
 
-    print(us_dec, us_inc)
+    # print(us_dec, us_inc)
     for idx, (u_inc, u_dec) in enumerate(zip(us_inc, us_dec)):
         # calculate partial differential w.r.t. u
         state_inc = simulate_dynamics(env, x.copy(), u_inc, dt)
@@ -165,21 +165,18 @@ def calc_lqr_input(env, sim_env, debug_flag=False):
     goal_dq = env.goal_dq.copy()
     Q = env.Q.copy()
     R = env.R.copy()
-    delta = 1e-4
-    dt = 1e-4
+    # delta = 1e-4
+    # dt = 1e-4
 
-    # if u is None:
-    #   u = 20.*np.random.rand(action_dim)-10.
-    # u = np.zeros(action_dim)
-    J = env.get_jacobian()
-    u = np.dot(J.T, goal_q)
+    if u is None:
+      u = np.zeros(action_dim)
 
-    A = approximate_A(sim_env, x.copy(), u.copy(), delta=delta, dt=dt)
-    if debug_flag : prGreen(A)
+    A = approximate_A(sim_env, x.copy(), u.copy())
+    # if debug_flag : prGreen(A)
     assert(A.shape == (state_dim, state_dim))
 
-    B = approximate_B(sim_env, x.copy(), u.copy(), delta=delta, dt=dt)
-    if debug_flag : prYellow(B)
+    B = approximate_B(sim_env, x.copy(), u.copy())
+    # if debug_flag : prYellow(B)
     assert(B.shape == (state_dim, action_dim))
 
     # 
@@ -188,18 +185,12 @@ def calc_lqr_input(env, sim_env, debug_flag=False):
 
     if debug_flag : prRed(K)
 
-    #first, try to solve the ricatti equation
-    # X = np.matrix(scipy.linalg.solve_continuous_are(A, B, Q, R))     
-    #compute the LQR gain
-    # K = np.matrix(scipy.linalg.inv(R)*(B.T*X))
-
     # debug()
-    u = np.hstack((u, goal_dq))
+    # J = env.get_jacobian()
+    x_target = x[:2]-goal_q
+    u = np.hstack((x_target, x[2:]))
     u = -np.dot(K, u)
 
-    # Policy
-    # u = -K.dot(x)
-    # print(u,x)
+    if debug_flag : prGreen((x[:2], goal_q))
 
     return u
-    # return np.ones((2,))
