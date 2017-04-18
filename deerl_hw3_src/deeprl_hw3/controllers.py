@@ -2,6 +2,20 @@
 
 import numpy as np
 
+import scipy #.linalg.solve_continuous_are as func
+
+from ipdb import set_trace as debug
+
+
+def prRed(prt): print("\033[91m {}\033[00m" .format(prt))
+def prGreen(prt): print("\033[92m {}\033[00m" .format(prt))
+def prYellow(prt): print("\033[93m {}\033[00m" .format(prt))
+def prLightPurple(prt): print("\033[94m {}\033[00m" .format(prt))
+def prPurple(prt): print("\033[95m {}\033[00m" .format(prt))
+def prCyan(prt): print("\033[96m {}\033[00m" .format(prt))
+def prLightGray(prt): print("\033[97m {}\033[00m" .format(prt))
+def prBlack(prt): print("\033[98m {}\033[00m" .format(prt))
+
 
 def simulate_dynamics(env, x, u, dt=1e-5):
     """Step simulator to see how state changes.
@@ -28,7 +42,13 @@ def simulate_dynamics(env, x, u, dt=1e-5):
       If you return x you will need to solve a different equation in
       your LQR controller.
     """
-    return np.zeros(x.shape)
+
+    env.dt = dt
+    env.state = x.copy()
+    x1, _, _, _ = env.step(u)
+    
+    xdot = (x1-x) / dt
+    return xdot
 
 
 def approximate_A(env, x, u, delta=1e-5, dt=1e-5):
@@ -54,7 +74,21 @@ def approximate_A(env, x, u, delta=1e-5, dt=1e-5):
     A: np.array
       The A matrix for the dynamics at state x and command u.
     """
-    return np.zeros((x.shape[0], x.shape[0]))
+
+    state_dim = x.shape[0]
+    action_dim = u.shape[0]
+
+    A = np.zeros((state_dim, state_dim)) 
+    xs_inc = np.tile(x,(state_dim,1)) + delta * np.eye(state_dim)
+    xs_dec = np.tile(x,(state_dim,1)) - delta * np.eye(state_dim)
+
+    for idx, (x_inc, x_dec) in enumerate(zip(xs_inc, xs_dec)):
+        # calculate partial differential w.r.t. x
+        state_inc = simulate_dynamics(env, x_inc, u.copy(), dt)
+        state_dec = simulate_dynamics(env, x_dec, u.copy(), dt)
+        A[:, idx] = (state_inc - state_dec) / (2 * delta)
+
+    return A
 
 
 def approximate_B(env, x, u, delta=1e-5, dt=1e-5):
@@ -80,10 +114,26 @@ def approximate_B(env, x, u, delta=1e-5, dt=1e-5):
     B: np.array
       The B matrix for the dynamics at state x and command u.
     """
-    return np.zeros((x.shape[0], u.shape[0]))
+
+    state_dim = x.shape[0]
+    action_dim = u.shape[0]
+
+    B = np.zeros((state_dim, action_dim)) 
+    us_inc = np.tile(u,(action_dim,1)) + delta * np.eye(action_dim)
+    us_dec = np.tile(u,(action_dim,1)) - delta * np.eye(action_dim)
+
+    print(us_dec, us_inc)
+    for idx, (u_inc, u_dec) in enumerate(zip(us_inc, us_dec)):
+        # calculate partial differential w.r.t. u
+        state_inc = simulate_dynamics(env, x.copy(), u_inc, dt)
+        state_dec = simulate_dynamics(env, x.copy(), u_dec, dt)
+        B[:, idx] = (state_inc - state_dec) / (2 * delta)
+
+    return B
 
 
-def calc_lqr_input(env, sim_env):
+u = None
+def calc_lqr_input(env, sim_env, debug_flag=False):
     """Calculate the optimal control input for the given state.
 
     If you are following the API and simulate dynamics is returning
@@ -105,4 +155,51 @@ def calc_lqr_input(env, sim_env):
     u: np.array
       The command to execute at this point.
     """
-    return np.ones((2,))
+
+    global u
+
+    state_dim = env.observation_space.shape[0]
+    action_dim = env.action_space.shape[0]
+    x = env.state.copy()
+    goal_q = env.goal_q.copy()
+    goal_dq = env.goal_dq.copy()
+    Q = env.Q.copy()
+    R = env.R.copy()
+    delta = 1e-4
+    dt = 1e-4
+
+    # if u is None:
+    #   u = 20.*np.random.rand(action_dim)-10.
+    # u = np.zeros(action_dim)
+    J = env.get_jacobian()
+    u = np.dot(J.T, goal_q)
+
+    A = approximate_A(sim_env, x.copy(), u.copy(), delta=delta, dt=dt)
+    if debug_flag : prGreen(A)
+    assert(A.shape == (state_dim, state_dim))
+
+    B = approximate_B(sim_env, x.copy(), u.copy(), delta=delta, dt=dt)
+    if debug_flag : prYellow(B)
+    assert(B.shape == (state_dim, action_dim))
+
+    # 
+    X = scipy.linalg.solve_continuous_are(A, B, Q, R)
+    K = np.dot(np.linalg.pinv(R), np.dot(B.T, X))
+
+    if debug_flag : prRed(K)
+
+    #first, try to solve the ricatti equation
+    # X = np.matrix(scipy.linalg.solve_continuous_are(A, B, Q, R))     
+    #compute the LQR gain
+    # K = np.matrix(scipy.linalg.inv(R)*(B.T*X))
+
+    # debug()
+    u = np.hstack((u, goal_dq))
+    u = -np.dot(K, u)
+
+    # Policy
+    # u = -K.dot(x)
+    # print(u,x)
+
+    return u
+    # return np.ones((2,))

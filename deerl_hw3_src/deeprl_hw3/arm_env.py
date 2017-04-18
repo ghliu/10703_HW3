@@ -38,7 +38,7 @@ class TwoLinkArmEnv(gym.core.Env):
             self.Q = np.zeros((self.DOF * 2, self.DOF * 2))
             self.Q[:self.DOF, :self.DOF] = np.eye(self.DOF) * 1000.0
         else:
-            self.R = R
+            self.Q = Q
 
         if R is None:
             self.R = np.eye(self.DOF) * 0.001
