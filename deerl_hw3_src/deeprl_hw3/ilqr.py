@@ -6,6 +6,7 @@ import scipy.linalg
 
 
 def simulate_dynamics_next(env, x, u):
+    print("a!!!")
     """Step simulator to see how state changes.
 
     Parameters
@@ -33,6 +34,7 @@ def simulate_dynamics_next(env, x, u):
 
 
 def cost_inter(env, x, u):
+    print("b!!!")
     """intermediate cost function
 
     Parameters
@@ -68,6 +70,7 @@ def cost_inter(env, x, u):
 
 
 def cost_final(env, x):
+    print("c!!!")
     """cost function of the last step
 
     Parameters
@@ -117,6 +120,7 @@ def cost_final(env, x):
 
 
 def diff(x, env):
+    print("d!!!")
     num_actions = env.action_space.shape[0]
     target = env.goal_q.copy()
 
@@ -137,6 +141,7 @@ def diff(x, env):
 
     
 def simulate(env, x0, U):
+    print("e!!!")
     tN = U.shape[0]
     num_states = x0.shape[0]
     dt = env.dt
@@ -156,6 +161,8 @@ def simulate(env, x0, U):
 
 U = None
 def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6):
+    print("fffff!!!")
+
     """Calculate the optimal control input for the given state.
 
 

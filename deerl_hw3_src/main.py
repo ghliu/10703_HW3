@@ -10,7 +10,6 @@ import argparse
 from deeprl_hw3.controllers import calc_lqr_input
 from deeprl_hw3.ilqr import calc_ilqr_input
 
-
 from ipdb import set_trace as debug
 
 parser = argparse.ArgumentParser(description='DRC 10703 Hw3')
@@ -37,13 +36,19 @@ env.reset()
 while True:
 	sim_env.state = env.state
 	# action = 10.*np.random.rand(action_dim)
-	action = {
-		1:calc_lqr_input(env, sim_env, debug_flag=args.debug),
-		2:calc_ilqr_input(env, sim_env),
-	}.get(args.prob)
+	#action = {
+	#	1:calc_lqr_input(env, sim_env, debug_flag=args.debug),
+	#	2:calc_ilqr_input(env, sim_env),
+	#}.get(args.prob)
+	action = calc_lqr_input(env, sim_env, debug_flag=args.debug)
+	# TODO
+	#if args.prob == 2:
+	#	for act in action:
+	#		obs, reward, is_done, _ = env.step(act)
+	#		env.render() 
 
+	#else:
 	obs, reward, is_done, _ = env.step(action)
-
 	env.render()
 
 	if np.linalg.norm(goal_q-env.position) < args.tol:
