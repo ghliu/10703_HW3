@@ -4,9 +4,9 @@ from deeprl_hw3.controllers import approximate_A, approximate_B
 import numpy as np
 import scipy.linalg
 
+from ipdb import set_trace as debug
 
 def simulate_dynamics_next(env, x, u):
-    print("a!!!")
     """Step simulator to see how state changes.
 
     Parameters
@@ -29,12 +29,9 @@ def simulate_dynamics_next(env, x, u):
     env.state = x.copy()
     x1, _, _, _ = env.step(u)
     return x1
-    #xdot = (x1-x) / dt
-    #return xdot
 
 
-def cost_inter(env, x, u):
-    print("b!!!")
+def cost_inter(env, x, u, discrete=False):
     """intermediate cost function
 
     Parameters
@@ -48,6 +45,8 @@ def cost_inter(env, x, u):
     u: np.array
       The command to test. When approximating B you will need to
       perturb this.
+    discrete: boolean
+      if True, multiply the env.dt
 
     Returns
     -------
@@ -55,22 +54,21 @@ def cost_inter(env, x, u):
     env, corresponding variables, ex: (1) l_x is the first order derivative d l/d x (2) l_xx is the second order derivative
     d^2 l/d x^2
     """
+    num_actions = env.action_space.shape[0]
+    num_states = env.observation_space.shape[0]
+    dt = env.dt if discrete else 1.
 
-    num_actions = u.shape[0]
-    num_states = x.shape[0]
-
-    l = np.sum(u**2)
-    l_x = np.zeros(num_states)
-    l_xx = np.zeros((num_states, num_states))
-    l_u = 2 * u
-    l_uu = 2 * np.eye(num_actions)
-    l_ux = np.zeros((num_actions, num_states))
+    l = np.sum(u**2)*dt
+    l_x = np.zeros(num_states)*dt
+    l_xx = np.zeros((num_states, num_states))*dt
+    l_u = 2 * u*dt
+    l_uu = 2 * np.eye(num_actions)*dt
+    l_ux = np.zeros((num_actions, num_states))*dt
 
     return l, l_x, l_xx, l_u, l_uu, l_ux
 
 
 def cost_final(env, x):
-    print("c!!!")
     """cost function of the last step
 
     Parameters
@@ -88,113 +86,48 @@ def cost_final(env, x):
     corresponding variables
     """
 
-    num_states = x.shape[0]
-    num_actions = env.action_space.shape[0]
+    num_states = env.observation_space.shape[0]
+    target = env.goal.copy()
 
-    l_x = np.zeros((num_states))
-    l_xx = np.zeros((num_states, num_states))
-
-    wp = 1e4 
-    wv = 1e4 
-
-    xy = x.copy() # copy? 
-    target = env.goal_q.copy()
-
-    xy_err = np.array([xy[0] - target[0], xy[1] - target[1]])
-    l = (wp * np.sum(xy_err**2) + wv * np.sum(x[num_actions:num_actions*2]**2))
-
-    l_x[:num_actions] = wp * diff(x[:num_actions], env)
-    l_x[num_actions:num_actions*2] = (2 * wv * x[num_actions:num_actions*2])
-
-    eps = 1e-4 
-
-    for k in range(num_actions): 
-        veps = np.zeros(num_actions)
-        veps[k] = eps
-        d1 = wp * diff(x[0:num_actions] + veps, env)
-        d2 = wp * diff(x[0:num_actions] - veps, env)
-        l_xx[0:num_actions, k] = ((d1-d2) / 2.0 / eps).flatten()
-
-    l_xx[num_actions:num_actions*2, num_actions:num_actions*2] = 2 * wv * np.eye(num_actions)
+    # calculate l, l_x, l_xx
+    weight = 1e4
+    l = weight * np.sum((x-target)**2)
+    l_x = 2.*weight*(x-target)
+    l_xx = 2.*weight*np.eye(num_states)
+    
     return l, l_x, l_xx
-
-
-def diff(x, env):
-    print("d!!!")
-    num_actions = env.action_space.shape[0]
-    target = env.goal_q.copy()
-
-    xe = -target.copy()
-    for ii in range(num_actions):
-        lii = env.l1 if ii==0 else env.l2
-        xe[0] += lii * np.cos(np.sum(x[:ii+1]))
-        xe[1] += lii * np.sin(np.sum(x[:ii+1]))
-
-    edot = np.zeros((num_actions,1))
-    for ii in range(num_actions):
-        lii = env.l1 if ii==0 else env.l2
-        edot[ii,0] += (2 * lii * (xe[0] * -np.sin(np.sum(x[:ii+1])) + xe[1] * np.cos(np.sum(x[:ii+1]))))
-    edot = np.cumsum(edot[::-1])[::-1][:]
-
-    return edot
-
 
     
 def simulate(env, x0, U):
-    print("e!!!")
     tN = U.shape[0]
-    num_states = x0.shape[0]
-    dt = env.dt
+    num_states = env.observation_space.shape[0]
 
     X = np.zeros((tN, num_states))
     X[0] = x0
-    cost = 0
+    cost = 0.
     for t in range(tN-1):
         X[t+1] = simulate_dynamics_next(env, X[t], U[t])
-        l,_,_,_,_,_ = cost_inter(env, X[t], U[t])
-        cost = cost + dt * l
+        l,_,_,_,_,_ = cost_inter(env, X[t], U[t], discrete=True)
+        cost += l
 
     l_f,_,_ = cost_final(env, X[-1])
-    cost = cost + l_f
+    cost += l_f
 
     return X, cost
 
-U = None
-def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6):
-    print("fffff!!!")
 
-    """Calculate the optimal control input for the given state.
-
-
-    Parameters
-    ----------
-    env: gym.core.Env
-      This is the true environment you will execute the computed
-      commands on. Use this environment to get the Q and R values as
-      well as the state.
-    sim_env: gym.core.Env
-      A copy of the env class. Use this to simulate the dynamics when
-      doing finite differences.
-    tN: number of control steps you are going to execute
-    max_itr: max iterations for optmization
-
-    Returns
-    -------
-    U: np.array
-      The SEQUENCE of commands to execute. The size should be (tN, #parameters)
-    """
-    global U
-    action_dim = env.action_space.shape[0] 
-    state_dim = env.observation_space.shape[0]
-    if U == None:
-        U = np.zeros((tN, action_dim))
+def solve(env, x0, U, max_iter, debug_flag):
 
     # initialize paramters: 
+    action_dim = env.action_space.shape[0] 
+    state_dim = env.observation_space.shape[0]
+
     sim_new_trajectory = True 
     lamb = 1.0
     lamb_factor = 10
     lamb_max = 1000
     eps_converge = 0.001
+    tN = U.shape[0]
 
     x0 = env.state.copy()
     for ii in range(int(max_iter)):
@@ -222,19 +155,13 @@ def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6):
                 # linearized dx(t) = np.dot(A(t), x(t)) + np.dot(B(t), u(t))
                 # f_x = np.eye + A(t)
                 # f_u = B(t)
-
-                A = approximate_A(sim_env, X[t].copy(), U[t].copy())
-                B = approximate_B(sim_env, X[t].copy(), U[t].copy()) 
+                A = approximate_A(env, X[t].copy(), U[t].copy(), dt=env.dt)
+                B = approximate_B(env, X[t].copy(), U[t].copy(), dt=env.dt) 
                 f_x[t] = np.eye(state_dim) + A * env.dt
                 f_u[t] = B * env.dt
                 
-                (l[t], l_x[t], l_xx[t], l_u[t], l_uu[t], l_ux[t]) = cost_inter(env, X[t], U[t])
-                l[t] *= env.dt
-                l_x[t] *= env.dt
-                l_xx[t] *= env.dt
-                l_u[t] *= env.dt
-                l_uu[t] *= env.dt
-                l_ux[t] *= env.dt
+                (l[t], l_x[t], l_xx[t], l_u[t], l_uu[t], l_ux[t]) = \
+                    cost_inter(env, X[t], U[t], discrete=True)
 
             l[-1], l_x[-1], l_xx[-1] = cost_final(env, X[-1])   
             sim_new_trajectory = False
@@ -265,7 +192,8 @@ def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6):
             Q_uu_evals, Q_uu_evecs = np.linalg.eig(Q_uu)
             Q_uu_evals[Q_uu_evals < 0] = 0.0
             Q_uu_evals += lamb
-            Q_uu_inv = np.dot(Q_uu_evecs, np.dot(np.diag(1.0/Q_uu_evals), Q_uu_evecs.T))
+            Q_uu_inv = np.dot(Q_uu_evecs, 
+                np.dot(np.diag(1.0/Q_uu_evals), Q_uu_evecs.T))
 
             # 5b) k = -np.dot(Q_uu^-1, Q_u)
             k[t] = -np.dot(Q_uu_inv, Q_u)
@@ -291,7 +219,7 @@ def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6):
         Xnew, costnew = simulate(env, x0, Unew)
 
         # Levenberg-Marquardt heuristic
-        if costnew < cost: 
+        if costnew <= cost: 
             # decrease lambda (get closer to Newton's method)
             lamb /= lamb_factor
 
@@ -303,19 +231,61 @@ def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6):
             sim_new_trajectory = True # do another rollout
 
             if ii > 0 and ((abs(oldcost-cost)/cost) < eps_converge):
-                print("Converged at iteration = %d; Cost = %.4f;"%(ii,costnew) + 
+                if debug_flag: 
+                    print("Converged at iteration = %d; Cost = %.4f;"%(ii,costnew) + 
                             " logLambda = %.1f"%np.log(lamb))
                 break
 
         else: 
             # increase lambda (get closer to gradient descent)
             lamb *= lamb_factor
-            # print("cost: %.4f, increasing lambda to %.4f")%(cost, lamb)
-            if lamb > lamb_max: 
+            if debug_flag and lamb > lamb_max: 
                 print("lambda > max_lambda at iteration = %d;"%ii + 
                         " Cost = %.4f; logLambda = %.1f"%(cost, 
                                                           np.log(lamb)))
-                break
-        # update x, u
 
-    return U #np.zeros((50, 2))
+    return X, U, cost
+
+
+U = None
+t = -1
+def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6, debug_flag=False):
+    """Calculate the optimal control input for the given state.
+
+
+    Parameters
+    ----------
+    env: gym.core.Env
+      This is the true environment you will execute the computed
+      commands on. Use this environment to get the Q and R values as
+      well as the state.
+    sim_env: gym.core.Env
+      A copy of the env class. Use this to simulate the dynamics when
+      doing finite differences.
+    tN: number of control steps you are going to execute
+    max_itr: max iterations for optmization
+
+    Returns
+    -------
+    U: np.array
+      The SEQUENCE of commands to execute. The size should be (tN, #parameters)
+    """
+    global U
+    global t
+
+    sim_env.state = env.state.copy()
+    action_dim = env.action_space.shape[0] 
+    state_dim = env.observation_space.shape[0]
+
+    if U is None:
+        U = np.zeros((tN,action_dim))
+
+    # update t
+    t = np.mod(t+1,tN)
+
+    # solve
+    x0 = sim_env.state.copy()
+    UU = np.copy(U[t:])
+    X, U[t:], cost = solve(sim_env, x0, UU, max_iter, debug_flag)
+
+    return U[t]
