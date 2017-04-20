@@ -3,6 +3,7 @@
 from deeprl_hw3.controllers import approximate_A, approximate_B
 import numpy as np
 import scipy.linalg
+import time
 
 from ipdb import set_trace as debug
 
@@ -116,7 +117,7 @@ def simulate(env, x0, U):
     return X, cost
 
 
-def solve(env, x0, U, max_iter, debug_flag):
+def solve(env, x0, U, max_iter, useLM, debug_flag):
 
     # initialize paramters: 
     action_dim = env.action_space.shape[0] 
@@ -220,8 +221,10 @@ def solve(env, x0, U, max_iter, debug_flag):
 
         # Levenberg-Marquardt heuristic
         if costnew <= cost: 
+
             # decrease lambda (get closer to Newton's method)
-            lamb /= lamb_factor
+            if useLM:
+                lamb /= lamb_factor
 
             X = np.copy(Xnew) # update trajectory 
             U = np.copy(Unew) # update control signal
@@ -238,7 +241,8 @@ def solve(env, x0, U, max_iter, debug_flag):
 
         else: 
             # increase lambda (get closer to gradient descent)
-            lamb *= lamb_factor
+            if useLM:
+                lamb *= lamb_factor
             if debug_flag and lamb > lamb_max: 
                 print("lambda > max_lambda at iteration = %d;"%ii + 
                         " Cost = %.4f; logLambda = %.1f"%(cost, 
@@ -249,7 +253,8 @@ def solve(env, x0, U, max_iter, debug_flag):
 
 U = None
 t = -1
-def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6, debug_flag=False):
+def calc_ilqr_input(env, sim_env, 
+    tN=50, max_iter=1e6, useLM=False, debug_flag=False):
     """Calculate the optimal control input for the given state.
 
 
@@ -273,19 +278,24 @@ def calc_ilqr_input(env, sim_env, tN=50, max_iter=1e6, debug_flag=False):
     global U
     global t
 
-    sim_env.state = env.state.copy()
-    action_dim = env.action_space.shape[0] 
-    state_dim = env.observation_space.shape[0]
-
-    if U is None:
-        U = np.zeros((tN,action_dim))
+    action_dim = env.action_space.shape[0]
 
     # update t
     t = np.mod(t+1,tN)
+    sim_env.state = env.state.copy()
 
-    # solve
-    x0 = sim_env.state.copy()
-    UU = np.copy(U[t:])
-    X, U[t:], cost = solve(sim_env, x0, UU, max_iter, debug_flag)
+    if U is None:
+        if debug_flag: t0 = time.time()
+        U = np.zeros((tN,action_dim))
+        x0 = sim_env.state.copy()
+        X, U, cost = solve(sim_env, x0, U, max_iter, useLM, debug_flag)
+        if debug_flag: print('solve with {}'.format(time.time()-t0))
 
-    return U[t]
+    u = U[t]
+
+    # reset
+    if t == tN-1:
+        if debug_flag: print('reset')
+        U = None
+
+    return u
