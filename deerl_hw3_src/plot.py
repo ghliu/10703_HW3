@@ -20,12 +20,14 @@ plt.plot(states[0], states[1], 'b.')
 plt.savefig("states-%s.png"%(env_name))
 plt.clf()
 
+
+plt.ylim([-15,15])
 plt.plot(actions[0], 'b-')
 plt.plot(actions[1], 'r-')
 plt.savefig("actions-iter-line-%s.png"%(env_name))
 plt.clf()
 
-plt.plot(reward, 'b-')
+plt.plot(rewards, 'b-')
 plt.savefig("reward-%s.png"%(env_name))
 plt.clf()
 
