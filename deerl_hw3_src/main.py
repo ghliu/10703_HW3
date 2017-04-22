@@ -46,6 +46,11 @@ select_action = {
 
 # start experiment
 env.reset()
+
+action_history = []
+state_history = []
+reward_history = []
+
 while True:
 	sim_env.state = env.state
 
@@ -53,9 +58,18 @@ while True:
 
 	obs, reward, is_done, _ = env.step(action)
 	
+	action_history.append(action)
+	state_history.append(obs)
+	reward_history.append(reward)
+
 	env.render()
 
 	if np.linalg.norm(goal_q-env.position) < args.tol:
 		break
 
-debug()
+#debug()
+pkl = open('result-prob%s-%s.pkl'%(opts.prob,opts.env))
+pickle.dump(state_history, pkl)
+pickle.dump(action_history, pkl)
+pickle.dump(reward_history, pkl)
+pkl.close()
