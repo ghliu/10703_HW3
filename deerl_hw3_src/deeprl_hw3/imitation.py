@@ -1,11 +1,12 @@
 """Functions for imitation learning."""
 from __future__ import division, absolute_import
 from __future__ import print_function, unicode_literals
-
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from keras.models import model_from_yaml
 import numpy as np
 import time
-
+import keras
 
 def load_model(model_config_path, model_weights_path=None):
     """Load a saved model.
@@ -32,7 +33,13 @@ def load_model(model_config_path, model_weights_path=None):
 
     return model
 
+# TODO
+def behavior_cloning(model, x_observations, y_actions, num_of_epochs = 50):
+    adam = keras.optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-03, decay=0.0)
+    model.compile(loss = 'binary_crossentropy', optimizer = adam, metrics = ['accuracy'])
+    model.fit(x_observations, y_actions, epochs = num_of_epochs)
 
+# TODO
 def generate_expert_training_data(expert, env, num_episodes=100, render=True):
     """Generate training dataset.
 
@@ -55,10 +62,31 @@ def generate_expert_training_data(expert, env, num_episodes=100, render=True):
       second contains a one-hot encoding of all of the actions chosen
       by the expert for those states.
     """
-    return np.zeros((4,)), np.zeros((2,))
+    observation_array = []
+    expert_action_array = []
+
+    for _ in range(num_episodes):
+        observation = env.reset()
+        if render:
+            env.render()
+            time.sleep(.1) 
+        is_done = False
+        
+        while not is_done:
+            observation_array.append(observation)
+            expert_action = expert.predict(np.reshape(observation, (-1,4))) 
+            one_hot_vec = np.zeros((2,))
+            one_hot_vec[np.argmax(expert_action)] = 1.
+            expert_action_array.append(one_hot_vec) 
+            observation, _, is_done, _ = env.step(np.argmax(expert_action)) 
+            if render:
+                env.render()
+                time.sleep(.1)
+        
+    return np.array(observation_array), np.array(expert_action_array)
 
 
-def test_cloned_policy(env, cloned_policy, num_episodes=50, render=True):
+def test_cloned_policy(env, cloned_policy, num_episodes=100, render=True):
     """Run cloned policy and collect statistics on performance.
 
     Will print the rewards for each episode and the mean/std of all
@@ -79,7 +107,7 @@ def test_cloned_policy(env, cloned_policy, num_episodes=50, render=True):
     total_rewards = []
 
     for i in range(num_episodes):
-        print('Starting episode {}'.format(i))
+#print('Starting episode {}'.format(i))
         total_reward = 0
         state = env.reset()
         if render:
@@ -94,13 +122,16 @@ def test_cloned_policy(env, cloned_policy, num_episodes=50, render=True):
             if render:
                 env.render()
                 time.sleep(.1)
-        print(
-            'Total reward: {}'.format(total_reward))
+#        print(
+#            'Total reward: {}'.format(total_reward))
         total_rewards.append(total_reward)
 
-    print('Average total reward: {} (std: {})'.format(
-        np.mean(total_rewards), np.std(total_rewards)))
+#    print('Average total reward: {} (std: {})'.format(
+#        np.mean(total_rewards), np.std(total_rewards)))
+#    print('Min reward: {} and Max reward: {}'.format(
+#        np.amax(total_rewards), np.amin(total_rewards)))
 
+    print(np.mean(total_rewards), np.amax(total_rewards), np.amin(total_rewards))
 
 def wrap_cartpole(env):
     """Start CartPole-v0 in a hard to recover state.
