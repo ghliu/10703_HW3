@@ -118,8 +118,7 @@ def simulate(env, x0, U):
 
 
 def solve(env, x0, U, max_iter, useLM, debug_flag):
-
-    # initialize paramters: 
+    # initialize paramters
     action_dim = env.action_space.shape[0] 
     state_dim = env.observation_space.shape[0]
 
@@ -136,26 +135,21 @@ def solve(env, x0, U, max_iter, useLM, debug_flag):
         if sim_new_trajectory: 
 
             X, cost = simulate(env, x0, U)
-            oldcost = np.copy(cost) # copy for exit condition check
+            oldcost = np.copy(cost)
 
-            # for storing linearized dynamics
-            # x(t+1) = f(x(t), u(t))
-            f_x = np.zeros((tN, state_dim, state_dim)) # df / dx
-            f_u = np.zeros((tN, state_dim, action_dim)) # df / du
+            # linearized dynamics
+            f_x = np.zeros((tN, state_dim, state_dim)) 
+            f_u = np.zeros((tN, state_dim, action_dim)) 
 
-            # for storing quadratized cost function 
-            l = np.zeros((tN,1)) # immediate state cost 
-            l_x = np.zeros((tN, state_dim)) # dl / dx
-            l_xx = np.zeros((tN, state_dim, state_dim)) # d^2 l / dx^2
-            l_u = np.zeros((tN, action_dim)) # dl / du
-            l_uu = np.zeros((tN, action_dim, action_dim)) # d^2 l / du^2
-            l_ux = np.zeros((tN, action_dim, state_dim)) # d^2 l / du / dx
+            # quadratized cost function 
+            l = np.zeros((tN,1)) 
+            l_x = np.zeros((tN, state_dim))
+            l_xx = np.zeros((tN, state_dim, state_dim))
+            l_u = np.zeros((tN, action_dim)) 
+            l_uu = np.zeros((tN, action_dim, action_dim)) 
+            l_ux = np.zeros((tN, action_dim, state_dim))
 
             for t in range(tN-1):
-                # x(t+1) = f(x(t), u(t)) = x(t) + dx(t) * dt
-                # linearized dx(t) = np.dot(A(t), x(t)) + np.dot(B(t), u(t))
-                # f_x = np.eye + A(t)
-                # f_u = B(t)
                 A = approximate_A(env, X[t].copy(), U[t].copy(), dt=env.dt)
                 B = approximate_B(env, X[t].copy(), U[t].copy(), dt=env.dt) 
                 f_x[t] = np.eye(state_dim) + A * env.dt
@@ -176,16 +170,11 @@ def solve(env, x0, U, max_iter, useLM, debug_flag):
 
         # backward
         for t in range(tN-2, -1, -1):
-            # 4a) Q_x = l_x + np.dot(f_x^T, V'_x)
             Q_x = l_x[t] + np.dot(f_x[t].T, V_x) 
-            # 4b) Q_u = l_u + np.dot(f_u^T, V'_x)
             Q_u = l_u[t] + np.dot(f_u[t].T, V_x)
 
-            # 4c) Q_xx = l_xx + np.dot(f_x^T, np.dot(V'_xx, f_x)) + np.einsum(V'_x, f_xx)
             Q_xx = l_xx[t] + np.dot(f_x[t].T, np.dot(V_xx, f_x[t])) 
-            # 4d) Q_ux = l_ux + np.dot(f_u^T, np.dot(V'_xx, f_x)) + np.einsum(V'_x, f_ux)
             Q_ux = l_ux[t] + np.dot(f_u[t].T, np.dot(V_xx, f_x[t]))
-            # 4e) Q_uu = l_uu + np.dot(f_u^T, np.dot(V'_xx, f_u)) + np.einsum(V'_x, f_uu)
             Q_uu = l_uu[t] + np.dot(f_u[t].T, np.dot(V_xx, f_u[t]))
 
             # Calculate Q_uu^-1 with regularization term set by 
@@ -196,25 +185,19 @@ def solve(env, x0, U, max_iter, useLM, debug_flag):
             Q_uu_inv = np.dot(Q_uu_evecs, 
                 np.dot(np.diag(1.0/Q_uu_evals), Q_uu_evecs.T))
 
-            # 5b) k = -np.dot(Q_uu^-1, Q_u)
             k[t] = -np.dot(Q_uu_inv, Q_u)
-            # 5b) K = -np.dot(Q_uu^-1, Q_ux)
             K[t] = -np.dot(Q_uu_inv, Q_ux)
 
-            # 6a) DV = -.5 np.dot(k^T, np.dot(Q_uu, k))
-            # 6b) V_x = Q_x - np.dot(K^T, np.dot(Q_uu, k))
             V_x = Q_x - np.dot(K[t].T, np.dot(Q_uu, k[t]))
-            # 6c) V_xx = Q_xx - np.dot(-K^T, np.dot(Q_uu, K))
             V_xx = Q_xx - np.dot(K[t].T, np.dot(Q_uu, K[t]))
 
 
         # forward
         Unew = np.zeros((tN, action_dim))
-        # calculate the optimal change to the control trajectory
-        xnew = x0.copy() # 7a)
+        xnew = x0.copy() 
         for t in range(tN - 1): 
-            Unew[t] = U[t] + k[t] + np.dot(K[t], xnew - X[t]) # 7b)
-            xnew = simulate_dynamics_next(env, xnew, Unew[t]) # 7c)
+            Unew[t] = U[t] + k[t] + np.dot(K[t], xnew - X[t]) 
+            xnew = simulate_dynamics_next(env, xnew, Unew[t]) 
 
         # evaluate the new trajectory 
         Xnew, costnew = simulate(env, x0, Unew)
@@ -222,7 +205,6 @@ def solve(env, x0, U, max_iter, useLM, debug_flag):
         # Levenberg-Marquardt heuristic
         if costnew <= cost: 
 
-            # decrease lambda (get closer to Newton's method)
             if useLM:
                 lamb /= lamb_factor
 
@@ -231,7 +213,7 @@ def solve(env, x0, U, max_iter, useLM, debug_flag):
             oldcost = np.copy(cost)
             cost = np.copy(costnew)
 
-            sim_new_trajectory = True # do another rollout
+            sim_new_trajectory = True 
 
             if ii > 0 and ((abs(oldcost-cost)/cost) < eps_converge):
                 if debug_flag: 
@@ -240,7 +222,7 @@ def solve(env, x0, U, max_iter, useLM, debug_flag):
                 break
 
         else: 
-            # increase lambda (get closer to gradient descent)
+            #  gradient descent
             if useLM:
                 lamb *= lamb_factor
             if debug_flag and lamb > lamb_max: 
