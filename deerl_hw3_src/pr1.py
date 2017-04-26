@@ -42,7 +42,7 @@ select_action = {
 	'mpc': lambda env, sim_env: calc_mpc_input(
 		env,sim_env,debug_flag=args.debug, max_iter=args.max_iter,
 		tN=args.tN, useLM=True),
-}.get(args.prob)
+}.get(args.controller)
 
 # start experiment
 env.reset()
